@@ -267,7 +267,7 @@ def en_tokenizer_func(text):
 # --- 4. 메인 실행 로직 ---
 if __name__ == "__main__":
     # 토크나이저 정의
-    ko_tokenizer = Mecab(dicpath="/usr/local/lib/mecab/dic/mecab-ko-dic").morphs
+    ko_tokenizer = Mecab(dicpath="C:/mecab/mecab-ko-dic").morphs
     # en_tokenizer = lambda text: text.lower().split()
     en_tokenizer = en_tokenizer_func
 
@@ -313,13 +313,13 @@ if __name__ == "__main__":
     )
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=256, collate_fn=collate_fn, shuffle=True, num_workers=8
+        train_dataset, batch_size=32, collate_fn=collate_fn, shuffle=True, num_workers=4
     )
     dev_dataloader = DataLoader(
-        dev_dataset, batch_size=256, collate_fn=collate_fn, num_workers=8
+        dev_dataset, batch_size=32, collate_fn=collate_fn, num_workers=4
     )
     test_dataloader = DataLoader(
-        test_dataset, batch_size=256, collate_fn=collate_fn, num_workers=8
+        test_dataset, batch_size=32, collate_fn=collate_fn, num_workers=4
     )
 
     # 모델, 손실함수, 옵티마이저 초기화

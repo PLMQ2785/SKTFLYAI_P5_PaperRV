@@ -3,6 +3,7 @@ import torch.nn as nn
 import math
 from konlpy.tag import Mecab
 import time
+
 # from torchtext.data.metrics import bleu_score
 import sacrebleu
 from thop import profile
@@ -40,13 +41,24 @@ class PositionalEncoding(nn.Module):
 
 class Seq2SeqTransformer(nn.Module):
     def __init__(
-        self, num_encoder_layers, num_decoder_layers, emb_size, nhead,
-        src_vocab_size, tgt_vocab_size, dim_feedforward=512, dropout=0.1,
+        self,
+        num_encoder_layers,
+        num_decoder_layers,
+        emb_size,
+        nhead,
+        src_vocab_size,
+        tgt_vocab_size,
+        dim_feedforward=512,
+        dropout=0.1,
     ):
         super(Seq2SeqTransformer, self).__init__()
         self.transformer = nn.Transformer(
-            d_model=emb_size, nhead=nhead, num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, dropout=dropout,
+            d_model=emb_size,
+            nhead=nhead,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
         )
         self.src_tok_emb = nn.Embedding(src_vocab_size, emb_size)
         self.tgt_tok_emb = nn.Embedding(tgt_vocab_size, emb_size)
@@ -54,14 +66,26 @@ class Seq2SeqTransformer(nn.Module):
         self.generator = nn.Linear(emb_size, tgt_vocab_size)
 
     def forward(
-        self, src, trg, src_mask, tgt_mask,
-        src_padding_mask, tgt_padding_mask, memory_key_padding_mask,
+        self,
+        src,
+        trg,
+        src_mask,
+        tgt_mask,
+        src_padding_mask,
+        tgt_padding_mask,
+        memory_key_padding_mask,
     ):
         src_emb = self.positional_encoding(self.src_tok_emb(src))
         tgt_emb = self.positional_encoding(self.tgt_tok_emb(trg))
         outs = self.transformer(
-            src_emb, tgt_emb, src_mask, tgt_mask, None,
-            src_padding_mask, tgt_padding_mask, memory_key_padding_mask,
+            src_emb,
+            tgt_emb,
+            src_mask,
+            tgt_mask,
+            None,
+            src_padding_mask,
+            tgt_padding_mask,
+            memory_key_padding_mask,
         )
         return self.generator(outs)
 
@@ -80,10 +104,12 @@ class Seq2SeqTransformer(nn.Module):
 def generate_square_subsequent_mask(sz):
     mask = (torch.triu(torch.ones(sz, sz, device=DEVICE)) == 1).transpose(0, 1)
     mask = (
-        mask.float().masked_fill(mask == 0, float("-inf"))
+        mask.float()
+        .masked_fill(mask == 0, float("-inf"))
         .masked_fill(mask == 1, float(0.0))
     )
     return mask
+
 
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
     """Greedy Search를 사용하여 번역 시퀀스를 생성하는 헬퍼 함수"""
@@ -96,7 +122,9 @@ def greedy_decode(model, src, src_mask, max_len, start_symbol):
 
     ys = torch.ones(1, 1).fill_(start_symbol).type(torch.long).to(DEVICE)
     for i in range(max_len - 1):
-        tgt_mask = (generate_square_subsequent_mask(ys.size(0)).type(torch.bool)).to(DEVICE)
+        tgt_mask = (generate_square_subsequent_mask(ys.size(0)).type(torch.bool)).to(
+            DEVICE
+        )
         with torch.no_grad():
             out = model.decode(ys, memory, tgt_mask)
         out = out.transpose(0, 1)
@@ -109,42 +137,47 @@ def greedy_decode(model, src, src_mask, max_len, start_symbol):
             break
     return ys
 
+
 def translate(model, src_sentence, ko_vocab, en_vocab, ko_tokenizer):
     model.eval()
     src_tokens = [ko_vocab.get(token, UNK_IDX) for token in ko_tokenizer(src_sentence)]
-    src_tensor = (torch.LongTensor([SOS_IDX] + src_tokens + [EOS_IDX]).unsqueeze(1))
-    
+    src_tensor = torch.LongTensor([SOS_IDX] + src_tokens + [EOS_IDX]).unsqueeze(1)
+
     num_tokens = src_tensor.shape[0]
     src_mask = (torch.zeros(num_tokens, num_tokens)).type(torch.bool)
-    
-    tgt_tokens_indices = greedy_decode(model, src_tensor, src_mask, max_len=num_tokens + 5, start_symbol=SOS_IDX).flatten()
-    
+
+    tgt_tokens_indices = greedy_decode(
+        model, src_tensor, src_mask, max_len=num_tokens + 5, start_symbol=SOS_IDX
+    ).flatten()
+
     # 인덱스를 단어로 변환
     # 어휘집에 없는 인덱스는 무시
     rev_en_vocab = {i: word for word, i in en_vocab.items()}
-    tgt_tokens = [rev_en_vocab.get(i, "") for i in tgt_tokens_indices.cpu().numpy()][1:] # <sos> 제외
-    
+    tgt_tokens = [rev_en_vocab.get(i, "") for i in tgt_tokens_indices.cpu().numpy()][
+        1:
+    ]  # <sos> 제외
+
     return " ".join(tgt_tokens).replace(" <eos>", "")
 
 
 def calculate_bleu(model, test_data_path, ko_vocab, en_vocab, ko_tokenizer):
     """테스트 데이터셋 전체에 대한 BLEU 스코어를 계산 (sacrebleu 사용)"""
-    
-    with open(test_data_path['ko'], 'r', encoding='utf-8') as f:
+
+    with open(test_data_path["ko"], "r", encoding="utf-8") as f:
         test_ko_sents = [line.strip() for line in f.readlines()]
-    with open(test_data_path['en'], 'r', encoding='utf-8') as f:
+    with open(test_data_path["en"], "r", encoding="utf-8") as f:
         # sacrebleu는 참조(정답) 문장을 리스트의 리스트 형태로 받습니다. [[ref1], [ref2], ...]
         targets = [[line.strip()] for line in f.readlines()]
-        
+
     predictions = []
-    
+
     for sentence in tqdm(test_ko_sents, desc="Calculating BLEU"):
         prediction_str = translate(model, sentence, ko_vocab, en_vocab, ko_tokenizer)
         predictions.append(prediction_str)
-        
+
     # sacrebleu.corpus_bleu 함수로 점수 계산
     bleu = sacrebleu.corpus_bleu(predictions, targets)
-    
+
     return bleu.score
 
 
@@ -158,8 +191,10 @@ if __name__ == "__main__":
     TGT_VOCAB_SIZE = len(en_vocab)
 
     # 토크나이저 정의
-    def en_tokenizer_func(text): return text.lower().split()
-    ko_tokenizer = Mecab().morphs
+    def en_tokenizer_func(text):
+        return text.lower().split()
+
+    ko_tokenizer = Mecab(dicpath="C:/mecab/mecab-ko-dic").morphs
     en_tokenizer = en_tokenizer_func
 
     # 하이퍼파라미터
@@ -169,19 +204,27 @@ if __name__ == "__main__":
     # 모델 초기화 및 가중치 불러오기
     print("모델 가중치를 불러옵니다...")
     model = Seq2SeqTransformer(
-        NUM_ENCODER_LAYERS, NUM_DECODER_LAYERS, EMB_SIZE, NHEAD,
-        SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, dim_feedforward=512
+        NUM_ENCODER_LAYERS,
+        NUM_DECODER_LAYERS,
+        EMB_SIZE,
+        NHEAD,
+        SRC_VOCAB_SIZE,
+        TGT_VOCAB_SIZE,
+        dim_feedforward=512,
     )
     model.load_state_dict(torch.load("transformer_model.pth", map_location=DEVICE))
     model.to(DEVICE)
-    
+
     # --- 단일 문장 번역 ---
     kor_sentence = "소프트웨어에 의한 암호화는 아주 가격이 저렴하고, 일단 상품을 구입한 이후에는 자연히 돈이 들지 않게 됩니다."
-    
+    # kor_sentence = "전국 곳곳에서 폭우 피해 잇따라…대구경북도 물폭탄"
+
     start_time = time.time()
-    translated_sentence = translate(model, kor_sentence, ko_vocab, en_vocab, ko_tokenizer)
+    translated_sentence = translate(
+        model, kor_sentence, ko_vocab, en_vocab, ko_tokenizer
+    )
     end_time = time.time()
-    
+
     print("\n=====================================")
     print(f"입력 (한국어): {kor_sentence}")
     print(f"번역 (영어): {translated_sentence}")
@@ -204,16 +247,30 @@ if __name__ == "__main__":
     dummy_tgt_padding_mask = torch.zeros(1, 25, device=DEVICE).type(torch.bool)
 
     # thop.profile을 사용하여 FLOPs 계산
-    macs, _ = profile(model, inputs=(dummy_src, dummy_tgt, dummy_src_mask, dummy_tgt_mask,
-                                       dummy_src_padding_mask, dummy_tgt_padding_mask, dummy_src_padding_mask), verbose=False)
+    macs, _ = profile(
+        model,
+        inputs=(
+            dummy_src,
+            dummy_tgt,
+            dummy_src_mask,
+            dummy_tgt_mask,
+            dummy_src_padding_mask,
+            dummy_tgt_padding_mask,
+            dummy_src_padding_mask,
+        ),
+        verbose=False,
+    )
     # MACs(Multiply-Accumulate)는 FLOPs의 약 2배이므로, GFLOPs는 Giga-MACs * 2
     gflops = (macs * 2) / 1e9
     print(f"FLOPs (추정): {gflops:.2f} GFLOPs")
-    
+
     # 3. 추론 시간
     print(f"단일 문장 추론 시간: {end_time - start_time:.4f} 초")
-    
+
     # --- BLEU 스코어 계산 ---
-    test_files = {'ko': 'korean-english-park.test.ko', 'en': 'korean-english-park.test.en'}
+    test_files = {
+        "ko": "korean-english-park.test.ko",
+        "en": "korean-english-park.test.en",
+    }
     bleu = calculate_bleu(model, test_files, ko_vocab, en_vocab, ko_tokenizer)
     print(f"\n테스트셋 BLEU 스코어: {bleu:.2f}")
